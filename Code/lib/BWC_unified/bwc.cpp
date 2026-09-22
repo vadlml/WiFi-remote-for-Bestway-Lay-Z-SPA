@@ -713,10 +713,12 @@ void BWC::_handleStateChanges()
     }
 
     if(
-        cio->cio_states.unit   != _prev_cio_states.unit || 
-        cio->cio_states.pump   != _prev_cio_states.pump || 
-        cio->cio_states.heat   != _prev_cio_states.heat || 
-        cio->cio_states.target != _prev_cio_states.target
+        cio->cio_states.unit    != _prev_cio_states.unit ||
+        cio->cio_states.pump    != _prev_cio_states.pump ||
+        cio->cio_states.heat    != _prev_cio_states.heat ||
+        cio->cio_states.target  != _prev_cio_states.target ||
+        cio->cio_states.bubbles != _prev_cio_states.bubbles ||
+        cio->cio_states.jets    != _prev_cio_states.jets
       )
         if(_states_are_restored) _save_states_needed = true; //Do not save until states are restored
 
@@ -1458,6 +1460,8 @@ void BWC::restoreStates() {
     uint8_t htr = doc[F("HTR")];
     uint8_t tgt = doc[F("TGT")] | 20;
     uint8_t god = doc[F("GOD")] ;
+    uint8_t air = doc[F("AIR")] | 0;
+    uint8_t jet = doc[F("JET")] | 0;
     command_que_item item;
     item.cmd = SETGODMODE;
     item.val = god;
@@ -1486,6 +1490,20 @@ void BWC::restoreStates() {
     item.cmd = SETTARGET;
     item.val = tgt;
     item.xtime = 4;
+    item.interval = 0;
+    item.text = "";
+    add_command(item);
+    /*  bubbles and jets run on a timer in the pump, so they are only turned
+        back on if they were on when the power was lost */
+    item.cmd = SETBUBBLES;
+    item.val = air;
+    item.xtime = 5;
+    item.interval = 0;
+    item.text = "";
+    add_command(item);
+    item.cmd = SETJETS;
+    item.val = jet;
+    item.xtime = 6;
     item.interval = 0;
     item.text = "";
     add_command(item);
@@ -1580,6 +1598,8 @@ void BWC::_saveStates() {
     doc[F("FLT")] = cio->cio_states.pump;
     doc[F("TGT")] = cio->cio_states.target;
     doc[F("GOD")] = (uint8_t)cio->cio_states.godmode;  //makes the file look better
+    doc[F("AIR")] = cio->cio_states.bubbles;
+    doc[F("JET")] = cio->cio_states.jets;
 
     // Serialize JSON to file
     if (serializeJson(doc, file) == 0) {
