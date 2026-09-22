@@ -16,8 +16,8 @@ namespace fwupdate
  * Defaults. owner/repo/branch can be changed from the web ui and are stored
  * in /fwsource.json. The files are expected at
  * raw.githubusercontent.com/<owner>/<repo>/<branch>/<dir>/
- *   manifest.json   {"version":"...","size":123456,"md5":"32 hex chars"}
- *   firmware.bin
+ *   manifest.json   {"version":"...","file":"firmware-<version>.bin","size":123456,"md5":"32 hex chars"}
+ *   firmware-<version>.bin (and a firmware.bin copy for manual downloads)
  *   filelist.txt    one file name per line (as produced by gzip_littlefs.py)
  *   data/<file>     the web files listed in filelist.txt
  */
@@ -105,7 +105,7 @@ static Source _source = {
     FW_UPDATE_OWNER, FW_UPDATE_REPO, FW_UPDATE_BRANCH, FW_UPDATE_DIR,
     CHUNK_DEFAULT, false
 };
-static Progress _progress = {STATE_IDLE, 0, 0, String(), String(), String(), 0};
+static Progress _progress = {STATE_IDLE, 0, 0, String(), String(), String(), String(), 0};
 static Request _request = REQ_NONE;
 static bool _with_files = false;
 static bool _running = false;
@@ -238,6 +238,7 @@ void get_status_json(String& rtn)
     doc[F("available")] = _progress.available;
     doc[F("size")] = _progress.size;
     doc[F("md5")] = _progress.md5;
+    doc[F("file")] = _progress.file;
     doc[F("current")] = FW_VERSION;
     doc[F("space")] = ESP.getFreeSketchSpace();
     doc[F("heap")] = ESP.getFreeHeap();
@@ -669,6 +670,15 @@ static bool read_manifest(String& err)
     _progress.available = doc[F("version")] | "";
     _progress.size = doc[F("size")] | 0;
     _progress.md5 = doc[F("md5")] | "";
+    /* the publisher names the binary after the version, so a manifest that is
+       still in the github cache can only point at the matching binary */
+    _progress.file = doc[F("file")] | "";
+    if(_progress.file.length() == 0) _progress.file = F("firmware.bin");
+    if(_progress.file.indexOf('/') >= 0)
+    {
+        err = F("manifest.json has a bad file name");
+        return false;
+    }
     if(_progress.available.length() == 0 || _progress.size == 0)
     {
         err = F("manifest.json is missing version or size");
@@ -760,7 +770,7 @@ static bool update_firmware(String& err)
     }
     if(_progress.md5.length() == 32) Update.setMD5(_progress.md5.c_str());
 
-    if(!fetch(base_path() + F("firmware.bin"), sink_update, nullptr, space, nullptr, err))
+    if(!fetch(base_path() + _progress.file, sink_update, nullptr, space, nullptr, err))
     {
         if(Update.getError() != UPDATE_ERROR_OK)
         {

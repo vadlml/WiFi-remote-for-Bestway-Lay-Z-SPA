@@ -54,8 +54,8 @@ Implemented in [`src/fw_update.cpp`](../src/fw_update.cpp).
 1. `manifest.json` is read and compared with `FW_VERSION`.
 2. Optionally every file from `filelist.txt` is downloaded to `/dl.tmp` and renamed
    into place, so your settings files are untouched.
-3. `firmware.bin` is streamed into `Update`, verified against the md5 from the
-   manifest, and the ESP reboots.
+3. The binary named by the manifest (`firmware-<version>.bin`) is streamed into
+   `Update`, verified against the md5 from the manifest, and the ESP reboots.
 
 While this runs, pump communication and the websocket/MQTT clients are paused to free
 heap, but the web server keeps answering, so the page shows live progress. If less than
@@ -68,7 +68,7 @@ manifest still applies).
 
 ## Path 2: the browser downloads (`/fwpush/`)
 
-The page fetches `manifest.json` and `firmware.bin` from
+The page fetches `manifest.json` and the binary it names from
 `raw.githubusercontent.com` (which sends `access-control-allow-origin: *`) and posts
 the binary to `/fwpush/?size=…&md5=…`. The ESP only streams the multipart body into
 `Update` - no TLS, no certificates, a few hundred bytes of buffers. The same button
@@ -86,11 +86,21 @@ handy for your own builds.
 
 ```
 https://raw.githubusercontent.com/<owner>/<repo>/<branch>/<dir>/
-    manifest.json     {"version": "2025-07-28-1200", "size": 697163, "md5": "…"}
-    firmware.bin
+    manifest.json     {"version": "…", "file": "firmware-<version>.bin", "size": …, "md5": "…"}
+    firmware-<version>.bin
+    firmware.bin      a copy under a fixed name, for manual downloads
     filelist.txt      one web file per line
     data/<file>       the web files, gzipped where useful
 ```
+
+`raw.githubusercontent.com` answers with `cache-control: max-age=300` and caches
+every path independently, and it ignores `no-cache`, `Pragma` and query strings
+(all three tested). So for up to five minutes after a publish a device can read a
+fresh `manifest.json` while the CDN still holds the previous `firmware.bin`.
+Naming the binary after the version removes that: a manifest can only ever point
+at the binary built with it. If the CDN has not got that name yet the download
+fails with a clean "not found on github" instead of a wrong image, and the md5
+from the manifest is still checked on top.
 
 `owner`, `repo`, `branch`, `dir`, chunk size and the certificate check are editable on
 the update page and stored in `/fwsource.json`. The defaults come from the git remote

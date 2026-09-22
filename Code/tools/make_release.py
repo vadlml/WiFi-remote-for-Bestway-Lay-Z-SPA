@@ -69,10 +69,18 @@ def main():
     shutil.rmtree(out_dir, True)
     os.makedirs(out_dir)
 
+    # raw.githubusercontent.com caches every path for 5 minutes and caches them
+    # independently, so a fresh manifest.json can be paired with a stale
+    # firmware.bin. Publishing the binary under a name that contains the version
+    # makes that impossible: a stale manifest can only point at the binary that
+    # belongs to it. firmware.bin is kept as a copy for manual downloads.
+    versioned = f"firmware-{version}.bin"
+    shutil.copy2(args.firmware, os.path.join(out_dir, versioned))
     shutil.copy2(args.firmware, os.path.join(out_dir, "firmware.bin"))
     size = os.path.getsize(args.firmware)
     manifest = {
         "version": version,
+        "file": versioned,
         "size": size,
         "md5": md5_of(args.firmware),
     }

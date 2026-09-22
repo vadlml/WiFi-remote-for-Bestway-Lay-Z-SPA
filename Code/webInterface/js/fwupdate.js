@@ -244,9 +244,12 @@ async function fwBrowserUpdate() {
 
         if (fwEl('fwWithFiles').checked) await fwPushWebFiles()
 
-        fwSetMessage('firmware.bin ...')
-        const binResponse = await fetch(fwGithubBase + 'firmware.bin', { cache: 'no-store' })
-        if (!binResponse.ok) throw new Error('firmware.bin: HTTP ' + binResponse.status)
+        // the binary is named after the version, so a cached manifest cannot
+        // send us to a mismatched firmware
+        const binName = manifest.file || 'firmware.bin'
+        fwSetMessage(binName + ' ...')
+        const binResponse = await fetch(fwGithubBase + binName, { cache: 'no-store' })
+        if (!binResponse.ok) throw new Error(binName + ': HTTP ' + binResponse.status)
         const blob = await binResponse.blob()
         if (manifest.size && blob.size !== manifest.size) {
             throw new Error('size mismatch: got ' + blob.size + ', expected ' + manifest.size)

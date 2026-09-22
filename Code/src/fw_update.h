@@ -43,8 +43,9 @@ namespace fwupdate
         uint32_t total;
         uint32_t done;
         String message;
-        /** version, size and md5 of the firmware.bin on GitHub (from manifest.json) */
+        /** version, file name, size and md5 of the firmware on GitHub (from manifest.json) */
         String available;
+        String file;
         String md5;
         uint32_t size;
     };
