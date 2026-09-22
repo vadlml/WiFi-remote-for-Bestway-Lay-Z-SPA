@@ -52,6 +52,10 @@ function parserTraduction(contenu) {
 
 
 function appliquerTraduction(dic) {
+    // keep the dictionary around, getTranslation() reads it for texts that are
+    // not in the page (alerts, status messages, ...)
+    window.translations = dic
+
     document.querySelectorAll('[data-i18n]').forEach(elem => {
         const cle = elem.getAttribute('data-i18n')
 

@@ -5,12 +5,39 @@ let fwPollTimer = null
 let fwGithubBase = ''
 let fwBusyLocal = false
 
+/* English fallbacks. getTranslation() only knows the texts of the language file
+   that is loaded, and for en-EN no file is loaded at all. */
+const FW_TEXT = {
+    fw_confirm: 'Start the update? Do not power off the module until it has rebooted.',
+    fw_checking: 'reading manifest.json from GitHub...',
+    fw_uploading: 'sending firmware to the module...',
+    fw_written: 'firmware written',
+    fw_rebooting: 'rebooting, this page reloads when the module is back',
+    fw_reboot_timeout: 'the module did not come back. Reload this page or power cycle it.',
+    fw_pick_file: 'Please choose a firmware.bin first.'
+}
+
+function fwText(key) {
+    const translated = getTranslation(key)
+    if (translated !== key) return translated
+    return FW_TEXT[key] || key
+}
+
 function fwEl(id) {
     return document.getElementById(id)
 }
 
 function fwSetMessage(text) {
-    fwEl('fwMessage').textContent = text
+    ['fwMessage', 'fwMessageBottom'].forEach(id => {
+        const e = fwEl(id)
+        if (e) e.textContent = text
+    })
+}
+
+/* the progress bar lives at the top of the page, so bring it into view when
+   something starts down here */
+function fwShowProgress() {
+    fwEl('fwMessage').scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
 function fwSetBar(percent) {
@@ -61,7 +88,7 @@ function fwRefreshStatus() {
                 if (!fwBusyLocal) fwSetBusy(false)
             }
             if (json.reboot) {
-                fwSetMessage(getTranslation('fw_rebooting'))
+                fwSetMessage(fwText('fw_rebooting'))
                 fwWaitForReboot()
             }
         })
@@ -84,7 +111,7 @@ function fwWaitForReboot() {
             .catch(() => {
                 if (tries > 40) {
                     clearInterval(timer)
-                    fwSetMessage(getTranslation('fw_reboot_timeout'))
+                    fwSetMessage(fwText('fw_reboot_timeout'))
                     fwSetBusy(false)
                 }
             })
@@ -136,8 +163,9 @@ function fwSaveSource() {
 /* ---------- update done by the ESP itself (https from github) ---------- */
 
 function fwCheckGithub() {
-    fwSetMessage(getTranslation('fw_checking'))
+    fwSetMessage(fwText('fw_checking'))
     fwSetBar(0)
+    fwShowProgress()
     fetch('/fwcheck/', { method: 'POST' })
         .then(() => {
             fwSetBusy(true)
@@ -147,9 +175,11 @@ function fwCheckGithub() {
 }
 
 function fwUpdateFromGithub() {
-    if (!confirm(getTranslation('fw_confirm'))) return
+    if (!confirm(fwText('fw_confirm'))) return
     const files = fwEl('fwWithFiles').checked ? '1' : '0'
     fwSetBar(0)
+    fwSetMessage('starting...')
+    fwShowProgress()
     fetch('/fwupdate/?files=' + files, { method: 'POST' })
         .then(r => {
             if (!r.ok) return r.text().then(t => { throw new Error(t) })
@@ -171,7 +201,7 @@ function fwPush(blob, md5) {
         req.open('POST', url)
         req.upload.onprogress = e => {
             if (e.lengthComputable) fwSetBar(Math.round((100 * e.loaded) / e.total))
-            fwSetMessage(getTranslation('fw_uploading'))
+            fwSetMessage(fwText('fw_uploading'))
         }
         req.onload = () => {
             if (req.status === 200) resolve()
@@ -200,12 +230,13 @@ async function fwPushWebFiles() {
 }
 
 async function fwBrowserUpdate() {
-    if (!confirm(getTranslation('fw_confirm'))) return
+    if (!confirm(fwText('fw_confirm'))) return
     fwBusyLocal = true
     fwSetBusy(true)
     fwSetBar(0)
+    fwSetMessage('manifest.json ...')
+    fwShowProgress()
     try {
-        fwSetMessage('manifest.json ...')
         const response = await fetch(fwGithubBase + 'manifest.json', { cache: 'no-store' })
         if (!response.ok) throw new Error('manifest.json: HTTP ' + response.status)
         const manifest = await response.json()
@@ -221,10 +252,11 @@ async function fwBrowserUpdate() {
             throw new Error('size mismatch: got ' + blob.size + ', expected ' + manifest.size)
         }
         await fwPush(blob, manifest.md5)
-        fwSetMessage(getTranslation('fw_written'))
+        fwSetMessage(fwText('fw_written'))
         fwWaitForReboot()
     } catch (e) {
-        fwSetMessage(e.message)
+        console.error('firmware update failed:', e)
+        fwSetMessage('failed: ' + e.message)
         fwSetBusy(false)
     }
     fwBusyLocal = false
@@ -233,19 +265,22 @@ async function fwBrowserUpdate() {
 async function fwInstallFile() {
     const input = fwEl('fwFile')
     if (!input.files || !input.files.length) {
-        alert(getTranslation('fw_pick_file'))
+        alert(fwText('fw_pick_file'))
         return
     }
-    if (!confirm(getTranslation('fw_confirm'))) return
+    if (!confirm(fwText('fw_confirm'))) return
     fwBusyLocal = true
     fwSetBusy(true)
     fwSetBar(0)
+    fwSetMessage('reading the file ...')
+    fwShowProgress()
     try {
         await fwPush(input.files[0], '')
-        fwSetMessage(getTranslation('fw_written'))
+        fwSetMessage(fwText('fw_written'))
         fwWaitForReboot()
     } catch (e) {
-        fwSetMessage(e.message)
+        console.error('firmware update failed:', e)
+        fwSetMessage('failed: ' + e.message)
         fwSetBusy(false)
     }
     fwBusyLocal = false
