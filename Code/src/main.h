@@ -49,6 +49,8 @@ bool sendMQTTFlag = false;
 bool send_mqtt_cfg_needed = false;
 bool gotIP_flag = false;
 bool disconnected_flag = false;
+/** why the station dropped, see WiFiDisconnectReason. Logged from loop() */
+volatile uint8_t last_disconnect_reason = 0;
 
 int periodicTimerInterval = 60;
 sWifi_info* wifi_info;

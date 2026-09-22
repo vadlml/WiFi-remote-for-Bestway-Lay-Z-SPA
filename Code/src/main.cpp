@@ -38,6 +38,8 @@ void gotIP()
 void cb_disconnected(const WiFiEventStationModeDisconnected& event)
 {
     disconnected_flag = true;
+    /* runs in SDK context, so only remember it and log from loop() */
+    last_disconnect_reason = (uint8_t)event.reason;
     // startSoftAp();
 }
 
@@ -114,7 +116,11 @@ void loop()
     if(freeheap < heap_water_mark) heap_water_mark = freeheap;
 
     if(gotIP_flag) gotIP();
-    if(disconnected_flag) startSoftAp();
+    if(disconnected_flag)
+    {
+        BWC_LOG_P(PSTR("WiFi > station disconnected. Reason: %d, RSSI: %d\n"), (int)last_disconnect_reason, (int)WiFi.RSSI());
+        startSoftAp();
+    }
     // We need this self-destructing info several times, so save it on the stack
     bool newData = bwc->newData();
     // Fiddle with the pump computer
