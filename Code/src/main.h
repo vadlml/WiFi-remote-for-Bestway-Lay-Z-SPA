@@ -51,6 +51,10 @@ bool gotIP_flag = false;
 bool disconnected_flag = false;
 /** why the station dropped, see WiFiDisconnectReason. Logged from loop() */
 volatile uint8_t last_disconnect_reason = 0;
+/** how long to wait after a failed attempt before trying the station again */
+#define WIFI_RETRY_MS 5000
+/** when the next station connect attempt is due */
+uint32_t next_wifi_retry = 0;
 
 int periodicTimerInterval = 60;
 sWifi_info* wifi_info;

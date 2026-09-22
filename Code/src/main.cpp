@@ -120,6 +120,22 @@ void loop()
     {
         BWC_LOG_P(PSTR("WiFi > station disconnected. Reason: %d, RSSI: %d\n"), (int)last_disconnect_reason, (int)WiFi.RSSI());
         startSoftAp();
+        /* the attempt is over, so try again shortly instead of waiting for the
+           60 s periodic timer */
+        next_wifi_retry = millis() + WIFI_RETRY_MS;
+    }
+    /*
+     * The first WiFi.begin() runs a few hundred ms after boot and its scan
+     * often comes back empty (disconnect reason 201, NO_AP_FOUND), and waiting
+     * for the 60 s periodic timer left the module unreachable for over a minute
+     * after a power cycle. Retry sooner, but only once the running attempt has
+     * ended: calling WiFi.begin() again while the SDK is still associating
+     * aborts it, and the access point then answers with AUTH_EXPIRE.
+     */
+    if(next_wifi_retry && (int32_t)(millis() - next_wifi_retry) >= 0)
+    {
+        next_wifi_retry = 0;
+        if(WiFi.status() != WL_CONNECTED) wifi_manual_reconnect();
     }
     // We need this self-destructing info several times, so save it on the stack
     bool newData = bwc->newData();
