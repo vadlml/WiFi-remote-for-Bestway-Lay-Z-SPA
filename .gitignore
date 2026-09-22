@@ -37,3 +37,5 @@ Code/.vscode/extensions.json
 
 ## filesystem
 Code/data/
+# python caches from the build scripts
+__pycache__/
