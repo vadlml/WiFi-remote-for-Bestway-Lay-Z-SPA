@@ -53,8 +53,12 @@ bool disconnected_flag = false;
 volatile uint8_t last_disconnect_reason = 0;
 /** how long to wait after a failed attempt before trying the station again */
 #define WIFI_RETRY_MS 5000
+/** retry anyway when an attempt produced no event at all within this time */
+#define WIFI_WATCHDOG_MS 20000
 /** when the next station connect attempt is due */
 uint32_t next_wifi_retry = 0;
+/** when we last called WiFi.begin() */
+uint32_t last_wifi_attempt = 0;
 
 int periodicTimerInterval = 60;
 sWifi_info* wifi_info;

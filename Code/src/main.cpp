@@ -132,10 +132,14 @@ void loop()
      * ended: calling WiFi.begin() again while the SDK is still associating
      * aborts it, and the access point then answers with AUTH_EXPIRE.
      */
-    if(next_wifi_retry && (int32_t)(millis() - next_wifi_retry) >= 0)
+    bool retry_due = next_wifi_retry && (int32_t)(millis() - next_wifi_retry) >= 0;
+    /* a cold boot can leave the attempt hanging without ever reporting a
+       disconnect, so do not rely on the event alone */
+    bool retry_stalled = (int32_t)(millis() - last_wifi_attempt - WIFI_WATCHDOG_MS) >= 0;
+    if((retry_due || retry_stalled) && WiFi.status() != WL_CONNECTED)
     {
         next_wifi_retry = 0;
-        if(WiFi.status() != WL_CONNECTED) wifi_manual_reconnect();
+        wifi_manual_reconnect();
     }
     // We need this self-destructing info several times, so save it on the stack
     bool newData = bwc->newData();
@@ -386,6 +390,7 @@ void wifi_manual_reconnect()
     {
         BWC_LOG_P(PSTR("WiFi > using WiFi configuration with SSID %s\n"), wifi_info->apSsid.c_str());
 
+        last_wifi_attempt = millis();
         WiFi.begin(wifi_info->apSsid.c_str(), wifi_info->apPwd.c_str());
         // checkWifi_ticker->attach(2.0, checkWiFi_ISR);
         BWC_LOG_P(PSTR("WiFi > AP info loaded. Waiting for connection ...\n"), 0);
@@ -393,6 +398,7 @@ void wifi_manual_reconnect()
     else
     {
         BWC_LOG_P(PSTR("WiFi > AP info not found. Using last known AP ...\n"), 0);
+        last_wifi_attempt = millis();
         WiFi.begin();
     }
 }
