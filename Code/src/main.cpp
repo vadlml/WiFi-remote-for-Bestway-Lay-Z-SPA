@@ -86,6 +86,10 @@ void setup()
     // update webpage every WS_PERIOD seconds. (will also be updated on state changes)
     updateWSTimer->attach(WS_PERIOD, []{ sendWSFlag = true; });
     loadWebConfig();
+    fwupdate::begin();
+    fwupdate::set_prepare_callback(fwupdate_prepare);
+    fwupdate::set_resume_callback(fwupdate_resume);
+    fwupdate::set_yield_callback(fwupdate_yield);
     startWiFi();
     if(wifi_info->enableWmApFallback) startSoftAp(); // not blocking anymore so no use case should exist for this to be turned off.
     startHttpServer();
@@ -123,6 +127,8 @@ void loop()
     }
     // listen for OTA events
     ArduinoOTA.handle();
+    // run a requested firmware update (blocks until done)
+    fwupdate::loop();
     // web socket
     if (newData || sendWSFlag)
     {
@@ -645,6 +651,13 @@ void startHttpServer()
         server->on(F("/info/"), handleESPInfo);
         server->on(F("/sethardware/"), handleSetHardware);
         server->on(F("/gethardware/"), handleGetHardware);
+        server->on(F("/getversions/"), handleGetVersions);
+        server->on(F("/fwstatus/"), handleFwStatus);
+        server->on(F("/fwcheck/"), handleFwCheck);
+        server->on(F("/fwupdate/"), handleFwUpdate);
+        server->on(F("/getfwsource/"), handleGetFwSource);
+        server->on(F("/setfwsource/"), handleSetFwSource);
+        server->on(F("/fwpush/"), HTTP_POST, handleFwPushDone, handleFwPushUpload);
         server->on(F("/debug-on/"), [](){bwc->BWC_DEBUG = true; server->send(200, F("text/plain"), "ok");});
         server->on(F("/debug-off/"), [](){bwc->BWC_DEBUG = false; server->send(200, F("text/plain"), "ok");});
         server->on(F("/cmdq_file/"), handle_cmdq_file);
@@ -1753,17 +1766,229 @@ void handleRestart()
     delay(3000);
 }
 
-void updateStart(){
-    BWC_LOG_P(PSTR("OTA > update start\n"),0);
+/**
+ * Free as much heap as we can before opening a TLS connection or writing flash.
+ * A https connection to github needs ~15 kB.
+ */
+void fwupdate_prepare()
+{
+    BWC_LOG_P(PSTR("FW > pausing. Heap: %d, largest block: %d\n"), ESP.getFreeHeap(), ESP.getMaxFreeBlockSize());
+    pause_all(true);
+    if (webSocket)
+    {
+        webSocket->disconnect();
+        webSocket->close();
+        delete webSocket;
+        webSocket = nullptr;
+    }
+    if (mqttClient && mqttClient->connected()) mqttClient->disconnect();
+    BWC_LOG_P(PSTR("FW > paused. Heap: %d, largest block: %d\n"), ESP.getFreeHeap(), ESP.getMaxFreeBlockSize());
 }
-void updateEnd(){
-    BWC_LOG_P(PSTR("OTA > update finish\n"),0);
+
+/**
+ * Back to normal operation after a failed or file-only update
+ */
+void fwupdate_resume()
+{
+    startWebSocket();
+    pause_all(false);
+    if (mqtt_info->useMqtt) mqttConnect();
 }
-void udpateProgress(int cur, int total){
-    BWC_LOG_P(PSTR("OTA: update process at %d of %d bytes...\n"), cur, total);
+
+/**
+ * Called from inside the (blocking) update, so the web ui can still poll the
+ * progress and the watchdog stays happy
+ */
+void fwupdate_yield()
+{
+    static uint32_t last_client = 0;
+    ESP.wdtFeed();
+    /* answering the progress polling a few times per second is plenty */
+    if (server && (millis() - last_client) > 100)
+    {
+        last_client = millis();
+        server->handleClient();
+    }
+    yield();
 }
-void updateError(int err){
-    BWC_LOG_P(PSTR("update fatal error code %d\n"), err);
+
+/**
+ * response for /getversions/ and /fwstatus/
+ * running version, what the last check found on github and update progress
+ */
+void handleGetVersions()
+{
+    String json;
+    json.reserve(512);
+    fwupdate::get_status_json(json);
+    server->send(200, F("application/json"), json);
+}
+
+void handleFwStatus()
+{
+    handleGetVersions();
+}
+
+/**
+ * response for /fwcheck/
+ * read manifest.json on github (progress/result via /fwstatus/)
+ */
+void handleFwCheck()
+{
+    if (!checkHttpPost(server->method())) return;
+    if (fwupdate::busy())
+    {
+        server->send(409, F("text/plain"), F("409: update already running"));
+        return;
+    }
+    fwupdate::request_check();
+    server->send(202, F("text/plain"), F("checking"));
+}
+
+/**
+ * response for /fwupdate/
+ * download from github and flash. Add "files=1" to update the web files too.
+ */
+void handleFwUpdate()
+{
+    if (!checkHttpPost(server->method())) return;
+    if (fwupdate::busy())
+    {
+        server->send(409, F("text/plain"), F("409: update already running"));
+        return;
+    }
+    String files = server->arg(F("files"));
+    fwupdate::request_update(files.equals("1") || files.equals("true"));
+    server->send(202, F("text/plain"), F("updating"));
+}
+
+/**
+ * response for /getfwsource/
+ */
+void handleGetFwSource()
+{
+    String json;
+    json.reserve(320);
+    fwupdate::get_source_json(json);
+    server->send(200, F("application/json"), json);
+}
+
+/**
+ * response for /setfwsource/
+ * web server writes a json document
+ */
+void handleSetFwSource()
+{
+    if (!checkHttpPost(server->method())) return;
+
+    StaticJsonDocument<512> doc;
+    String message = server->arg(0);
+    DeserializationError error = deserializeJson(doc, message);
+    if (error)
+    {
+        server->send(400, F("text/plain"), F("Error deserializing message"));
+        return;
+    }
+
+    fwupdate::Source src = fwupdate::get_source();
+    if (doc.containsKey(F("owner"))) src.owner = doc[F("owner")].as<const char*>();
+    if (doc.containsKey(F("repo"))) src.repo = doc[F("repo")].as<const char*>();
+    if (doc.containsKey(F("branch"))) src.branch = doc[F("branch")].as<const char*>();
+    if (doc.containsKey(F("dir"))) src.dir = doc[F("dir")].as<const char*>();
+    if (doc.containsKey(F("chunk"))) src.chunk = doc[F("chunk")];
+    if (doc.containsKey(F("insecure"))) src.insecure = doc[F("insecure")];
+    fwupdate::set_source(src);
+
+    if (!fwupdate::save_source())
+    {
+        server->send(500, F("text/plain"), F("500: couldn't save fwsource.json"));
+        return;
+    }
+    server->send(200, F("text/plain"), "");
+}
+
+/**
+ * upload handler for /fwpush/
+ * The browser downloads firmware.bin (from github or from disk) and posts it
+ * here. No TLS on the ESP, so this works even when the heap is too tight for
+ * the direct download.
+ */
+void handleFwPushUpload()
+{
+    HTTPUpload& upload = server->upload();
+    if (upload.status == UPLOAD_FILE_START)
+    {
+        fw_push_error.clear();
+        if (fwupdate::busy())
+        {
+            fw_push_error = F("an update from github is already running");
+            return;
+        }
+        BWC_LOG_P(PSTR("OTA > receiving %s\n"), upload.filename.c_str());
+        /* stop talking to the pump and free heap while writing flash */
+        fwupdate_prepare();
+        WiFiUDP::stopAll();
+        Update.runAsync(true);
+        uint32_t max_space = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+        uint32_t size = server->arg(F("size")).toInt();
+        if (size == 0 || size > max_space) size = max_space;
+        if (!Update.begin(size, U_FLASH))
+        {
+            fw_push_error = Update.getErrorString();
+            Update.clearError();
+            return;
+        }
+        String md5 = server->arg(F("md5"));
+        if (md5.length() == 32) Update.setMD5(md5.c_str());
+    }
+    else if (upload.status == UPLOAD_FILE_WRITE && fw_push_error.length() == 0)
+    {
+        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize)
+        {
+            fw_push_error = Update.getErrorString();
+            Update.end();
+            Update.clearError();
+        }
+    }
+    else if (upload.status == UPLOAD_FILE_END && fw_push_error.length() == 0)
+    {
+        if (Update.end(true))
+        {
+            BWC_LOG_P(PSTR("OTA > %d bytes written\n"), upload.totalSize);
+        }
+        else
+        {
+            fw_push_error = Update.getErrorString();
+            Update.clearError();
+        }
+    }
+    else if (upload.status == UPLOAD_FILE_ABORTED)
+    {
+        Update.end();
+        Update.clearError();
+        if (fw_push_error.length() == 0) fw_push_error = F("upload aborted");
+    }
+    delay(0);
+}
+
+/**
+ * response for /fwpush/
+ */
+void handleFwPushDone()
+{
+    if (fw_push_error.length())
+    {
+        BWC_LOG_P(PSTR("OTA > push failed: %s\n"), fw_push_error.c_str());
+        server->send(500, F("text/plain"), fw_push_error);
+        fwupdate_resume();
+        return;
+    }
+    server->sendHeader(F("Connection"), F("close"));
+    server->send(200, F("text/plain"), F("OK"));
+    delay(500);
+    BWC_LOG_P(PSTR("OTA > restarting into the new firmware\n"), 0);
+    ESP.restart();
+    delay(3000);
 }
 
 /**

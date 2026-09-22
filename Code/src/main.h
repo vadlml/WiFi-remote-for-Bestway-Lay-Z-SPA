@@ -29,6 +29,7 @@
 #include "config.h"
 #include "util.h"
 #include "bwc_debug.h"
+#include "fw_update.h"
 
 
 BWC *bwc = nullptr;
@@ -54,6 +55,9 @@ sWifi_info* wifi_info;
 
 /** A file to store the uploads */
 File fsUploadFile;
+
+/** empty unless the last browser pushed firmware upload failed */
+String fw_push_error;
 
 /** a webserver object that listens on port 80 */
 #if defined(ESP8266)
@@ -134,10 +138,19 @@ void handleDir();
 void handleFileUpload();
 void handleFileRemove();
 void handleRestart();
-void updateStart();
-void updateEnd();
-void udpateProgress(int cur, int total);
-void updateError(int err);
+/* firmware update from github (see fw_update.h) */
+void handleGetVersions();
+void handleFwStatus();
+void handleFwCheck();
+void handleFwUpdate();
+void handleGetFwSource();
+void handleSetFwSource();
+/* firmware pushed to us by the browser */
+void handleFwPushDone();
+void handleFwPushUpload();
+void fwupdate_prepare();
+void fwupdate_resume();
+void fwupdate_yield();
 void startMqtt();
 void mqttCallback(char* topic, byte* payload, unsigned int length);
 void mqttConnect();

@@ -647,3 +647,44 @@
     .darkmode footer {
       background: rgba(255,255,255,0.05);
     }
+
+    /* Barre de progression de la mise à jour du firmware */
+    .fwbar {
+      position: relative;
+      height: 22px;
+      margin: 10px 0;
+      border-radius: 11px;
+      background: rgba(0,0,0,0.12);
+      overflow: hidden;
+    }
+
+    .darkmode .fwbar {
+      background: rgba(255,255,255,0.12);
+    }
+
+    .fwbar > div {
+      height: 100%;
+      width: 0%;
+      background: var(--accent-color);
+      transition: width 0.3s ease;
+    }
+
+    .fwbar > span {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      text-align: center;
+      line-height: 22px;
+      font-size: 0.8em;
+    }
+
+    #fwMessage {
+      min-height: 1.5em;
+      word-break: break-word;
+    }
+
+    #fwUrl {
+      word-break: break-all;
+      font-size: 0.85em;
+    }

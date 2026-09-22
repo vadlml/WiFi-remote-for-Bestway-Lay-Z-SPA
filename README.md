@@ -67,6 +67,13 @@ Open the PCB tab and go to menu Fabrication, Gerber files. Order the PCB_V2B.
 Build instructions and more: [Instructions](bwc-manual.pdf)
 Technical details in the [Documentation](bwc_docs.xlsx).
 
+#### Firmware update over the air
+The "Check firmware update" page updates the module without a cable, in two ways:
+- **the ESP downloads it itself** from GitHub over https,
+- **your browser downloads it** and pushes it to the ESP over your local network (use this if the ESP reports too little free memory).
+
+Both can update the web files (html/css/js) as well. Details, including how to publish your own build for it, are in [Code/docs/firmware-update.md](Code/docs/firmware-update.md).
+
 @misterpeee's wife made and shared this case for 3d printing https://github.com/visualapproach/WiFi-remote-for-Bestway-Lay-Z-SPA/discussions/265#discussion-4062382 but it's for the PCB_V1 which is deprecated. Latest PCB is PCB_V2B.
 
 #### Problems?

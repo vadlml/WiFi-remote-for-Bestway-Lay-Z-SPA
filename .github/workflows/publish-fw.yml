@@ -1,0 +1,84 @@
+name: Publish OTA update files
+
+# Builds the firmware and pushes firmware.bin, the web files and a manifest to
+# the "fw" branch. raw.githubusercontent.com serves that branch with
+# "access-control-allow-origin: *" and answers HTTP range requests, which is
+# what the update page in the firmware needs.
+
+on:
+  push:
+    branches:
+      - master
+      - development_v4
+      - ota-firmware-update
+    paths:
+      - 'Code/**'
+      - '.github/workflows/publish-fw.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-fw
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('Code/platformio.ini') }}
+          restore-keys: pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Build firmware
+        working-directory: Code
+        run: pio run -e nodemcuv2
+
+      - name: Assemble the update files
+        working-directory: Code
+        run: python3 tools/make_release.py --out "$RUNNER_TEMP/fw"
+
+      - name: Publish to the fw branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          cd "$RUNNER_TEMP/fw"
+          cat manifest.json
+          cat > README.md <<'EOF'
+          Generated branch - do not edit.
+
+          These files are downloaded by the firmware update page of the
+          Lay-Z-Spa module (Code/src/fw_update.cpp) and are replaced by the
+          publish-fw workflow on every build.
+          EOF
+          git init -q -b fw
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "update files built from ${GITHUB_SHA::7}"
+          git push -q --force \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            HEAD:refs/heads/fw
+          echo "published to https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/fw/manifest.json"
+
+      - name: Keep the binaries as a build artifact too
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: ${{ runner.temp }}/fw

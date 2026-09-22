@@ -9,11 +9,143 @@
 {% endblock %}
 
 {% block content %}
+<!-- ==================== SECTION: Warning ==================== -->
 <section>
-  <p data-i18n="chkupdate_message">
-    This functionality has been removed. It was too demanding for the ESP8266, and I couldn't figure out how to make
-    GitHub send small enough packages for it to handle. Unfortunately, it used to work, but I think something has
-    changed on GitHub's side.
+  <p data-i18n="fw_warning">
+    Only update when you are at the spa so you can fix things if something goes wrong.<br>
+    Communication with the pump pauses during the update, so 4-wire pumps will show an error and have to be
+    restarted afterwards.<br>
+    <b>Do not power off the ESP until it has rebooted!</b>
   </p>
 </section>
+
+<!-- ==================== SECTION: Status ==================== -->
+<section>
+  <h2 data-i18n="fw_section_status">Status:</h2>
+  <table>
+    <tr>
+      <td data-i18n="fw_label_current">Installed version:</td>
+      <td><span id="fwCurrent">...</span></td>
+    </tr>
+    <tr>
+      <td data-i18n="fw_label_available">Available on GitHub:</td>
+      <td><span id="fwAvailable">-</span> <span id="fwNewVersion" style="display:none"
+          data-i18n="fw_new_version">(update available)</span></td>
+    </tr>
+    <tr>
+      <td data-i18n="fw_label_size">Download size:</td>
+      <td><span id="fwSize">-</span></td>
+    </tr>
+    <tr>
+      <td data-i18n="fw_label_space">Free space for firmware:</td>
+      <td><span id="fwSpace">-</span></td>
+    </tr>
+    <tr>
+      <td data-i18n="fw_label_heap">Free heap:</td>
+      <td><span id="fwHeap">-</span></td>
+    </tr>
+  </table>
+  <div class="fwbar">
+    <div id="fwBarFill"></div>
+    <span id="fwBarText">0%</span>
+  </div>
+  <p id="fwMessage"></p>
+</section>
+
+<!-- ==================== SECTION: Update by the ESP ==================== -->
+<section>
+  <h2 data-i18n="fw_section_device">Let the ESP download the update:</h2>
+  <p data-i18n="fw_device_note">
+    The ESP fetches the files from GitHub over https. It uses range requests, because GitHub would otherwise send
+    16 kB TLS records which do not fit in the memory of an ESP8266. This needs about 15 kB of free heap - if that
+    fails, use the browser assisted update below.
+  </p>
+  <p>
+    <input type="checkbox" id="fwWithFiles">
+    <label for="fwWithFiles" data-i18n="label_fw_files">also update the web files (index.html, css, ...)</label>
+  </p>
+  <p class="center">
+    <button id="fwCheck" class="button" onclick="fwCheckGithub()" data-i18n="btn_fw_check">Check for update</button>
+    <button id="fwUpdate" class="button_red" onclick="fwUpdateFromGithub()" data-i18n="btn_fw_update">Download and
+      install</button>
+  </p>
+</section>
+
+<!-- ==================== SECTION: Update by the browser ==================== -->
+<section>
+  <h2 data-i18n="fw_section_browser">Let this browser do the download:</h2>
+  <p data-i18n="fw_browser_note">
+    Your phone or computer downloads the firmware from GitHub and pushes it to the ESP over your local network.
+    No https on the ESP, so this works even when its memory is almost full. Works with the web files checkbox above
+    as well.
+  </p>
+  <p class="center">
+    <button id="fwBrowserUpdate" class="button_red" onclick="fwBrowserUpdate()" data-i18n="btn_fw_browser_update">
+      Download in browser and install</button>
+  </p>
+  <p data-i18n="fw_file_note">Or pick a firmware.bin you built yourself:</p>
+  <p class="center">
+    <label class="button" for="fwFile" data-i18n="btn_browse">Browse...</label>
+    <input type="file" id="fwFile" accept=".bin" style="visibility:hidden;position:absolute">
+    <span id="fwFileName"></span>
+    <button id="fwInstallFile" class="button_red" onclick="fwInstallFile()" data-i18n="btn_fw_install_file">Install
+      this file</button>
+  </p>
+</section>
+
+<!-- ==================== SECTION: Source ==================== -->
+<section>
+  <h2 data-i18n="fw_section_source">Update source:</h2>
+  <p data-i18n="fw_source_note">
+    The files (manifest.json, firmware.bin, filelist.txt, data/) are read from this location:
+  </p>
+  <p><code id="fwUrl"></code></p>
+  <table>
+    <tr>
+      <td><label for="fwOwner" data-i18n="label_fw_owner">GitHub user:</label></td>
+      <td><input type="text" id="fwOwner"></td>
+    </tr>
+    <tr>
+      <td><label for="fwRepo" data-i18n="label_fw_repo">Repository:</label></td>
+      <td><input type="text" id="fwRepo"></td>
+    </tr>
+    <tr>
+      <td><label for="fwBranch" data-i18n="label_fw_branch">Branch:</label></td>
+      <td><input type="text" id="fwBranch"></td>
+    </tr>
+    <tr>
+      <td><label for="fwDir" data-i18n="label_fw_dir">Folder:</label></td>
+      <td><input type="text" id="fwDir"></td>
+    </tr>
+    <tr>
+      <td>
+        <label for="fwChunk" data-i18n="label_fw_chunk">Bytes per request:</label>
+        <span class="tooltip"
+          data-text="Size of each range request, 4096 at most. Bigger responses arrive in TLS records that do not fit in the ESP receive buffer, and the download fails."
+          data-i18n="[data-text]tooltip_fw_chunk">?</span>
+      </td>
+      <td><input type="number" id="fwChunk" min="512" max="4096" step="512"></td>
+    </tr>
+    <tr>
+      <td>
+        <label for="fwInsecure" data-i18n="label_fw_insecure">Skip certificate check:</label>
+        <span class="tooltip"
+          data-text="Only tick this if the built in root certificate has expired. The firmware is still verified against the md5 from manifest.json, but the connection is no longer authenticated. You can also upload your own root certificate as ca.pem."
+          data-i18n="[data-text]tooltip_fw_insecure">?</span>
+      </td>
+      <td><input type="checkbox" id="fwInsecure"></td>
+    </tr>
+  </table>
+  <p class="center">
+    <button id="fwSaveSource" class="button" onclick="fwSaveSource()" data-i18n="button_save">Save</button>
+  </p>
+</section>
+{% endblock %}
+
+{% block footer %}
+<p class="center"><a class="button" href="/" data-i18n="menu_home">Home</a></p>
+{% endblock %}
+
+{% block embed_scripts %}
+{% run embed_scripts('fwupdate') %}
 {% endblock %}
