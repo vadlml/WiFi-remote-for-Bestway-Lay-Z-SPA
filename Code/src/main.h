@@ -60,6 +60,23 @@ uint32_t next_wifi_retry = 0;
 /** when we last called WiFi.begin() */
 uint32_t last_wifi_attempt = 0;
 
+/*
+ * Timeline of the first station connection after boot, saved as one line to
+ * wifilog.txt once NTP has set the clock. Only the serial port showed why a
+ * power cycle sometimes took minutes to get back online; this keeps it.
+ * kind: B boot attempt, R retry after a disconnect, W watchdog retry,
+ *       P periodic timer retry, D disconnect (with reason), I got an IP
+ */
+#define WIFI_LOG_EVENTS 24
+#define WIFI_LOG_MAX_SIZE 8192
+struct wifi_log_event { uint32_t ms; char kind; uint8_t reason; int8_t rssi; };
+wifi_log_event wifi_log[WIFI_LOG_EVENTS];
+uint8_t wifi_log_len = 0;
+/** events past the array that were not kept */
+uint16_t wifi_log_dropped = 0;
+bool wifi_log_done = false;
+uint32_t wifi_gotip_ms = 0;
+
 int periodicTimerInterval = 60;
 sWifi_info* wifi_info;
 
@@ -104,7 +121,9 @@ void getOtherInfo(String &rtn);
 void sendMQTT();
 void sendMQTTConfig();
 void startWiFi();
-void wifi_manual_reconnect();
+void wifi_manual_reconnect(char why = 'P');
+void wifi_log_add(char kind, uint8_t reason = 0, int8_t rssi = 0);
+void saveWifiLog();
 void startSoftAp();
 void checkNTP_ISR();
 void checkNTP();

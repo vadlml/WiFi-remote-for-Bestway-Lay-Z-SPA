@@ -24,6 +24,8 @@ void gotIP()
     ESP.wdtFeed();
     BWC_LOG_P(PSTR("start of gotip millis = %d\n"), millis());
     gotIP_flag = false;
+    if(!wifi_gotip_ms) wifi_gotip_ms = millis();
+    wifi_log_add('I', 0, (int8_t)WiFi.RSSI());
     WiFi.softAPdisconnect();
     WiFi.mode(WIFI_STA);
     BWC_LOG_P(PSTR("Soft AP > closed\n"), 0);
@@ -119,6 +121,7 @@ void loop()
     if(disconnected_flag)
     {
         BWC_LOG_P(PSTR("WiFi > station disconnected. Reason: %d, RSSI: %d\n"), (int)last_disconnect_reason, (int)WiFi.RSSI());
+        wifi_log_add('D', last_disconnect_reason, (int8_t)WiFi.RSSI());
         startSoftAp();
         /* the attempt is over, so try again shortly instead of waiting for the
            60 s periodic timer */
@@ -139,7 +142,7 @@ void loop()
     if((retry_due || retry_stalled) && WiFi.status() != WL_CONNECTED)
     {
         next_wifi_retry = 0;
-        wifi_manual_reconnect();
+        wifi_manual_reconnect(retry_due ? 'R' : 'W');
     }
     // We need this self-destructing info several times, so save it on the stack
     bool newData = bwc->newData();
@@ -203,7 +206,7 @@ void loop()
         periodicTimerFlag = false;
         if(WiFi.getMode() == WIFI_AP_STA)
         {
-            wifi_manual_reconnect();
+            wifi_manual_reconnect('P');
         }
         if (mqtt_info->useMqtt && !mqttClient->loop() && (WiFi.status() == WL_CONNECTED))
         {
@@ -379,12 +382,13 @@ void startWiFi()
         WiFi.config(ip4Address, ip4Gateway, ip4Subnet, ip4DnsPrimary, ip4DnsSecondary);
     }
 
-    wifi_manual_reconnect();
+    wifi_manual_reconnect('B');
     BWC_YIELD;
 }
 
-void wifi_manual_reconnect()
+void wifi_manual_reconnect(char why)
 {
+    wifi_log_add(why);
     /* Connect in station mode to the AP given (your router/ap) */
     if (wifi_info->enableAp)
     {
@@ -425,6 +429,86 @@ void startSoftAp()
     BWC_YIELD;
 }
 
+void wifi_log_add(char kind, uint8_t reason, int8_t rssi)
+{
+    if(wifi_log_done) return;
+    if(wifi_log_len >= WIFI_LOG_EVENTS)
+    {
+        wifi_log_dropped++;
+        return;
+    }
+    wifi_log[wifi_log_len++] = { millis(), kind, reason, rssi };
+}
+
+/**
+ * append the connection timeline of this boot to wifilog.txt, e.g.
+ * {"boot":"2026-09-22 22:44:46","rst":"Power On","ip_ms":6612,"ntp_ms":7010,
+ *  "rssi":-67,"ch":6,"bssid":"..","ev":"B@312 D201@2400/-81 R@7400 I@9120/-66"}
+ */
+void saveWifiLog()
+{
+    if(wifi_log_done) return;
+    wifi_log_done = true;
+
+    /* keep one previous file, so the log never grows past twice the limit */
+    File file = LittleFS.open(F("wifilog.txt"), "r");
+    if(file)
+    {
+        size_t size = file.size();
+        file.close();
+        if(size > WIFI_LOG_MAX_SIZE)
+        {
+            LittleFS.remove(F("wifilog.old"));
+            LittleFS.rename(F("wifilog.txt"), F("wifilog.old"));
+        }
+    }
+
+    String line;
+    line.reserve(64 + wifi_log_len * 16);
+    line = F("{\"boot\":\"");
+    line += bwc->reboot_time_str;
+    line += F("\",\"rst\":\"");
+    line += ESP.getResetReason();
+    line += F("\",\"ip_ms\":");
+    line += wifi_gotip_ms;
+    line += F(",\"ntp_ms\":");
+    line += millis();
+    line += F(",\"rssi\":");
+    line += WiFi.RSSI();
+    line += F(",\"ch\":");
+    line += WiFi.channel();
+    line += F(",\"bssid\":\"");
+    line += WiFi.BSSIDstr();
+    line += F("\",\"ev\":\"");
+    for(uint8_t i = 0; i < wifi_log_len; i++)
+    {
+        const wifi_log_event &e = wifi_log[i];
+        if(i) line += ' ';
+        line += e.kind;
+        if(e.kind == 'D') line += e.reason;
+        line += '@';
+        line += e.ms;
+        if(e.kind == 'D' || e.kind == 'I')
+        {
+            line += '/';
+            line += e.rssi;
+        }
+    }
+    if(wifi_log_dropped)
+    {
+        line += F(" +");
+        line += wifi_log_dropped;
+        line += F(" more");
+    }
+    line += F("\"}");
+
+    file = LittleFS.open(F("wifilog.txt"), "a");
+    if(!file) return;
+    file.println(line);
+    file.close();
+    BWC_LOG_P(PSTR("WiFi > saved join log: %s\n"), line.c_str());
+}
+
 void checkNTP_ISR()
 {
     checkNTP_flag = true;
@@ -456,6 +540,7 @@ void checkNTP()
         BWC_LOG_P(PSTR("NTP > synced: %s. Saving boot info.\n"),bwc->reboot_time_str.c_str());
         firstNtpSyncAfterBoot = false;
         bwc->saveRebootInfo();
+        saveWifiLog();
     }
     BWC_YIELD;
 }
