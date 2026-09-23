@@ -1596,7 +1596,9 @@ void BWC::_saveStates() {
     doc[F("UNT")] = cio->cio_states.unit;
     doc[F("HTR")] = cio->cio_states.heat;
     doc[F("FLT")] = cio->cio_states.pump;
-    doc[F("TGT")] = cio->cio_states.target;
+    /*  while the module steps the pump towards a new target the display shows
+        every value in between, so save where it is going, not where it is */
+    doc[F("TGT")] = _dsp_tgt_used ? cio->cio_states.target : _web_target;
     doc[F("GOD")] = (uint8_t)cio->cio_states.godmode;  //makes the file look better
     doc[F("AIR")] = cio->cio_states.bubbles;
     doc[F("JET")] = cio->cio_states.jets;

@@ -75,6 +75,13 @@ void CIO_6_TYPE1::updateStates()
     static uint32_t buttonReleaseTime;
     enum Readmode: int {readtemperature, uncertain, readtarget};
     static Readmode capturePhase = readtemperature;
+    /*  The display switches to the target temperature only some packets after
+        UP/DOWN is pressed. Reading it right away took the water temperature
+        for the target, it was saved in states.txt, and restoring the states
+        after a power cut then drove the pump's real target down to it. */
+    static const uint32_t TARGET_CAPTURE_DELAY_MS = 300;
+    static uint32_t targetCaptureFrom = 0;
+    static bool buttonWasPressed = false;
 
     //require two consecutive messages to be equal before registering
     #if FILTER_6W_SPIKES==1
@@ -133,11 +140,15 @@ void CIO_6_TYPE1::updateStates()
     cio_states.error = 0;
 
     //capture TARGET after UP/DOWN has been pressed...
-    if ((_button_code == getButtonCode(UP)) || (_button_code == getButtonCode(DOWN)))
+    bool buttonPressed = (_button_code == getButtonCode(UP)) || (_button_code == getButtonCode(DOWN));
+    if (buttonPressed)
     {
+        /* a new press while the display still shows the water temperature */
+        if(!buttonWasPressed && capturePhase != readtarget) targetCaptureFrom = millis() + TARGET_CAPTURE_DELAY_MS;
         buttonReleaseTime = millis(); //updated as long as buttons are pressed
         if(cio_states.power && !cio_states.locked) capturePhase = readtarget;
     }
+    buttonWasPressed = buttonPressed;
 
     //Stop expecting target temp after timeout
     if((millis()-buttonReleaseTime) > 2000) capturePhase = uncertain;
@@ -146,7 +157,7 @@ void CIO_6_TYPE1::updateStates()
     String tempstring = String((char)cio_states.char1)+String((char)cio_states.char2)+String((char)cio_states.char3);
     uint8_t parsedValue = tempstring.toInt();
     //capture target temperature only if showing plausible values (not blank screen while blinking)
-    if( (capturePhase == readtarget) && (parsedValue > 19) ) 
+    if( (capturePhase == readtarget) && (parsedValue > 19) && ((int32_t)(millis() - targetCaptureFrom) >= 0) ) 
     {
         cio_states.target = parsedValue;
     }
