@@ -31,6 +31,8 @@ show_section_buttons=Afficher la section "Boutons"
 show_section_timer=Afficher la section "Minuterie"
 show_section_totals=Afficher la section "Totaux"
 use_control_selector=Utiliser le sélecteur (au lieu du curseur)
+save_logs=Enregistrer les journaux en flash
+tooltip_save_logs=Conserve bootlog.txt, wifilog.txt et crashlog.txt sur le module, pour savoir pourquoi il a redémarré ou a mis longtemps à se connecter. Quelques petites écritures par mise sous tension.
 
 section_temp_title=Température
 label_actual=Réel :

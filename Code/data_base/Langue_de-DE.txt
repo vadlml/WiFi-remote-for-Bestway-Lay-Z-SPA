@@ -31,6 +31,8 @@ show_section_buttons=Bereich "Tasten" anzeigen
 show_section_timer=Bereich "Timer" anzeigen
 show_section_totals=Bereich "Summen" anzeigen
 use_control_selector=Auswahl verwenden (statt Schieberegler)
+save_logs=Protokolle im Flash speichern
+tooltip_save_logs=Behält bootlog.txt, wifilog.txt und crashlog.txt auf dem Modul, um herauszufinden, warum es neu gestartet ist oder lange zum Verbinden brauchte. Wenige kleine Schreibvorgänge pro Einschalten.
 
 section_temp_title=Temperatur
 label_actual=Ist :

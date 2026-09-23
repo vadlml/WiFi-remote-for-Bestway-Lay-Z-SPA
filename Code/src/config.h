@@ -74,6 +74,8 @@ bool showSectionTimer = true;
 bool showSectionTotals = true;
 /** get or set the state of displaying slider or selector */
 bool useControlSelector = false;
+/** write bootlog.txt, wifilog.txt and crashlog.txt to flash */
+bool saveLogs = true;
 
 /*
  * WiFi Configuration Manager

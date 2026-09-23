@@ -31,6 +31,8 @@ show_section_buttons=Show section "Buttons"
 show_section_timer=Show section "Timer"
 show_section_totals=Show section "Totals"
 use_control_selector=Use selector (instead of slider)
+save_logs=Save logs to flash
+tooltip_save_logs=Keeps bootlog.txt, wifilog.txt and crashlog.txt on the module, to find out why it restarted or took long to get online. A few small writes per power up.
 
 section_temp_title=Temperature
 label_actual=Actual:

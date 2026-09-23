@@ -61,7 +61,6 @@ void setup()
     disconnectedEventHandler = WiFi.onStationModeDisconnected(cb_disconnected);
 
     LittleFS.begin();
-    carryOverWifiLog();
     {
         HeapSelectIram ephemeral;
         bwc = new BWC;
@@ -93,6 +92,8 @@ void setup()
     // update webpage every WS_PERIOD seconds. (will also be updated on state changes)
     updateWSTimer->attach(WS_PERIOD, []{ sendWSFlag = true; });
     loadWebConfig();
+    /* needs saveLogs from webconfig.json */
+    carryOverWifiLog();
     fwupdate::begin();
     fwupdate::set_prepare_callback(fwupdate_prepare);
     fwupdate::set_resume_callback(fwupdate_resume);
@@ -392,6 +393,9 @@ void startWiFi()
 
 void wifi_manual_reconnect(char why)
 {
+    /* the 60 s timer does not know about the retries in loop(): wifilog.txt
+       showed it starting over 1 s after a retry, which aborts that attempt */
+    if(why == 'P' && (millis() - last_wifi_attempt) < WIFI_WATCHDOG_MS) return;
     wifi_log_add(why);
     /* Connect in station mode to the AP given (your router/ap) */
     if (wifi_info->enableAp)
@@ -532,6 +536,12 @@ void carryOverWifiLog()
 {
     File cur = LittleFS.open(F("wifilog.cur"), "r");
     if(!cur) return;
+    if(!saveLogs)
+    {
+        cur.close();
+        LittleFS.remove(F("wifilog.cur"));
+        return;
+    }
     String line = cur.readStringUntil('\n');
     cur.close();
     LittleFS.remove(F("wifilog.cur"));
@@ -552,6 +562,7 @@ void saveWifiLogProgress()
     uint32_t gap = wifi_log_next_save;
     if(gap > 600000) gap = 600000;
     wifi_log_next_save = millis() + gap;
+    if(!saveLogs) return;
     File file = LittleFS.open(F("wifilog.cur"), "w");
     if(!file) return;
     file.println(wifiLogLine(false));
@@ -562,8 +573,9 @@ void saveWifiLogProgress()
 void saveWifiLog()
 {
     if(wifi_log_done) return;
-    String line = wifiLogLine(true);
     wifi_log_done = true;
+    if(!saveLogs) return;
+    String line = wifiLogLine(true);
     rotateWifiLog();
     File file = LittleFS.open(F("wifilog.txt"), "a");
     if(!file) return;
@@ -603,7 +615,7 @@ void checkNTP()
     {
         BWC_LOG_P(PSTR("NTP > synced: %s. Saving boot info.\n"),bwc->reboot_time_str.c_str());
         firstNtpSyncAfterBoot = false;
-        bwc->saveRebootInfo();
+        if(saveLogs) bwc->saveRebootInfo();
         saveWifiLog();
     }
     BWC_YIELD;
@@ -1369,6 +1381,7 @@ void loadWebConfig()
     showSectionTimer = (doc.containsKey(F("SSTIM")) ? doc[F("SSTIM")] : true);
     showSectionTotals = (doc.containsKey(F("SSTOT")) ? doc[F("SSTOT")] : true);
     useControlSelector = (doc.containsKey(F("UCS")) ? doc[F("UCS")] : false);
+    saveLogs = (doc.containsKey(F("LOG")) ? doc[F("LOG")] : true);
     BWC_YIELD;
 }
 
@@ -1394,6 +1407,7 @@ void saveWebConfig()
     doc[F("SSTIM")] = showSectionTimer;
     doc[F("SSTOT")] = showSectionTotals;
     doc[F("UCS")] = useControlSelector;
+    doc[F("LOG")] = saveLogs;
 
     if (serializeJson(doc, file) == 0)
     {
@@ -1421,6 +1435,7 @@ void handleGetWebConfig()
     doc[F("SSTIM")] = showSectionTimer;
     doc[F("SSTOT")] = showSectionTotals;
     doc[F("UCS")] = useControlSelector;
+    doc[F("LOG")] = saveLogs;
 
     String json;
     if (serializeJson(doc, json) == 0)
@@ -1456,6 +1471,7 @@ void handleSetWebConfig()
     showSectionTimer = doc[F("SSTIM")];
     showSectionTotals = doc[F("SSTOT")];
     useControlSelector = doc[F("UCS")];
+    saveLogs = doc[F("LOG")] | saveLogs;
 
     saveWebConfig();
 
@@ -2445,6 +2461,7 @@ void setTemperatureFromSensor()
 
 extern "C" void custom_crash_callback(struct rst_info * rst_info, uint32_t stack, uint32_t stack_end )
 {
+    if(!saveLogs) return;
     File file = LittleFS.open(F("crashlog.txt"), "a");
     String crashinfo;
     crashinfo.reserve(1024);

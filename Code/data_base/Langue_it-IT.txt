@@ -31,6 +31,8 @@ show_section_buttons=Mostra sezione "Pulsanti"
 show_section_timer=Mostra sezione "Timer"
 show_section_totals=Mostra sezione "Totali"
 use_control_selector=Usa selettore (invece del cursore)
+save_logs=Salva i log nella flash
+tooltip_save_logs=Conserva bootlog.txt, wifilog.txt e crashlog.txt sul modulo, per capire perché si è riavviato o ha impiegato molto a connettersi. Poche piccole scritture per accensione.
 
 section_temp_title=Temperatura
 label_actual=Reale :

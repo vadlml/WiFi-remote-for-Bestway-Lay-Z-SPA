@@ -31,6 +31,8 @@ show_section_buttons=Mostrar secção "Botões"
 show_section_timer=Mostrar secção "Temporizador"
 show_section_totals=Mostrar secção "Totais"
 use_control_selector=Usar seletor (em vez do deslizador)
+save_logs=Guardar registos na flash
+tooltip_save_logs=Mantém bootlog.txt, wifilog.txt e crashlog.txt no módulo, para perceber porque reiniciou ou demorou a ligar-se. Poucas escritas pequenas por arranque.
 
 section_temp_title=Temperatura
 label_actual=Real :
