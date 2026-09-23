@@ -61,21 +61,32 @@ uint32_t next_wifi_retry = 0;
 uint32_t last_wifi_attempt = 0;
 
 /*
- * Timeline of the first station connection after boot, saved as one line to
- * wifilog.txt once NTP has set the clock. Only the serial port showed why a
- * power cycle sometimes took minutes to get back online; this keeps it.
+ * Timeline of the first station connection after boot, one line per boot in
+ * wifilog.txt. Only the serial port showed why a power cycle sometimes took
+ * minutes to get back online; this keeps it.
+ * A boot that never gets online must be recorded too, so until NTP has set
+ * the clock the line is rewritten to wifilog.cur now and then, and the next
+ * boot moves whatever it finds there into wifilog.txt.
  * kind: B boot attempt, R retry after a disconnect, W watchdog retry,
- *       P periodic timer retry, D disconnect (with reason), I got an IP
+ *       P periodic timer retry, D disconnect (with reason and the access
+ *       point that dropped us), I got an IP (with RSSI)
  */
 #define WIFI_LOG_EVENTS 24
+/** when the array is full the first events stay, the rest is a sliding window */
+#define WIFI_LOG_KEEP_FIRST 4
 #define WIFI_LOG_MAX_SIZE 8192
-struct wifi_log_event { uint32_t ms; char kind; uint8_t reason; int8_t rssi; };
+/** first progress save of a boot that is not online yet; the gap doubles */
+#define WIFI_LOG_FIRST_SAVE_MS 15000
+struct wifi_log_event { uint32_t ms; char kind; uint8_t reason; int8_t rssi; uint16_t ap; };
 wifi_log_event wifi_log[WIFI_LOG_EVENTS];
 uint8_t wifi_log_len = 0;
-/** events past the array that were not kept */
+/** events that were pushed out of the sliding window */
 uint16_t wifi_log_dropped = 0;
 bool wifi_log_done = false;
 uint32_t wifi_gotip_ms = 0;
+uint32_t wifi_log_next_save = WIFI_LOG_FIRST_SAVE_MS;
+/** last two bytes of the BSSID in the last disconnect event */
+volatile uint16_t last_disconnect_ap = 0;
 
 int periodicTimerInterval = 60;
 sWifi_info* wifi_info;
@@ -122,7 +133,11 @@ void sendMQTT();
 void sendMQTTConfig();
 void startWiFi();
 void wifi_manual_reconnect(char why = 'P');
-void wifi_log_add(char kind, uint8_t reason = 0, int8_t rssi = 0);
+void wifi_log_add(char kind, uint8_t reason = 0, int8_t rssi = 0, uint16_t ap = 0);
+String wifiLogLine(bool final);
+void rotateWifiLog();
+void carryOverWifiLog();
+void saveWifiLogProgress();
 void saveWifiLog();
 void startSoftAp();
 void checkNTP_ISR();

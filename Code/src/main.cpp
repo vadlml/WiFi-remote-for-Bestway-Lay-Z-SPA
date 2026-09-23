@@ -26,6 +26,7 @@ void gotIP()
     gotIP_flag = false;
     if(!wifi_gotip_ms) wifi_gotip_ms = millis();
     wifi_log_add('I', 0, (int8_t)WiFi.RSSI());
+    saveWifiLogProgress();
     WiFi.softAPdisconnect();
     WiFi.mode(WIFI_STA);
     BWC_LOG_P(PSTR("Soft AP > closed\n"), 0);
@@ -42,6 +43,7 @@ void cb_disconnected(const WiFiEventStationModeDisconnected& event)
     disconnected_flag = true;
     /* runs in SDK context, so only remember it and log from loop() */
     last_disconnect_reason = (uint8_t)event.reason;
+    last_disconnect_ap = ((uint16_t)event.bssid[4] << 8) | event.bssid[5];
     // startSoftAp();
 }
 
@@ -59,6 +61,7 @@ void setup()
     disconnectedEventHandler = WiFi.onStationModeDisconnected(cb_disconnected);
 
     LittleFS.begin();
+    carryOverWifiLog();
     {
         HeapSelectIram ephemeral;
         bwc = new BWC;
@@ -121,7 +124,7 @@ void loop()
     if(disconnected_flag)
     {
         BWC_LOG_P(PSTR("WiFi > station disconnected. Reason: %d, RSSI: %d\n"), (int)last_disconnect_reason, (int)WiFi.RSSI());
-        wifi_log_add('D', last_disconnect_reason, (int8_t)WiFi.RSSI());
+        wifi_log_add('D', last_disconnect_reason, 0, last_disconnect_ap);
         startSoftAp();
         /* the attempt is over, so try again shortly instead of waiting for the
            60 s periodic timer */
@@ -135,6 +138,7 @@ void loop()
      * ended: calling WiFi.begin() again while the SDK is still associating
      * aborts it, and the access point then answers with AUTH_EXPIRE.
      */
+    if(!wifi_log_done && (int32_t)(millis() - wifi_log_next_save) >= 0) saveWifiLogProgress();
     bool retry_due = next_wifi_retry && (int32_t)(millis() - next_wifi_retry) >= 0;
     /* a cold boot can leave the attempt hanging without ever reporting a
        disconnect, so do not rely on the event alone */
@@ -429,83 +433,143 @@ void startSoftAp()
     BWC_YIELD;
 }
 
-void wifi_log_add(char kind, uint8_t reason, int8_t rssi)
+void wifi_log_add(char kind, uint8_t reason, int8_t rssi, uint16_t ap)
 {
     if(wifi_log_done) return;
     if(wifi_log_len >= WIFI_LOG_EVENTS)
     {
+        /* keep how the boot started and slide over the rest */
+        memmove(&wifi_log[WIFI_LOG_KEEP_FIRST], &wifi_log[WIFI_LOG_KEEP_FIRST + 1],
+                (WIFI_LOG_EVENTS - WIFI_LOG_KEEP_FIRST - 1) * sizeof(wifi_log_event));
+        wifi_log_len--;
         wifi_log_dropped++;
-        return;
     }
-    wifi_log[wifi_log_len++] = { millis(), kind, reason, rssi };
+    wifi_log[wifi_log_len++] = { millis(), kind, reason, rssi, ap };
 }
 
 /**
- * append the connection timeline of this boot to wifilog.txt, e.g.
- * {"boot":"2026-09-22 22:44:46","rst":"Power On","ip_ms":6612,"ntp_ms":7010,
- *  "rssi":-67,"ch":6,"bssid":"..","ev":"B@312 D201@2400/-81 R@7400 I@9120/-66"}
+ * the connection timeline of this boot as one line, e.g.
+ * {"boot":"2026-09-22 22:44:46","rst":"Power On","up_s":9,"online":true,"ip_ms":6612,
+ *  "ntp_ms":7010,"rssi":-67,"ch":6,"bssid":"..","ev":"B@312 D2@5400>4c86 R@10400 I@12120/-66"}
+ * boot is "?" while the clock is not set, D..>xxxx is the end of the BSSID that
+ * dropped us, and "+N" marks events that were pushed out of the window.
  */
-void saveWifiLog()
+String wifiLogLine(bool final)
 {
-    if(wifi_log_done) return;
-    wifi_log_done = true;
-
-    /* keep one previous file, so the log never grows past twice the limit */
-    File file = LittleFS.open(F("wifilog.txt"), "r");
-    if(file)
-    {
-        size_t size = file.size();
-        file.close();
-        if(size > WIFI_LOG_MAX_SIZE)
-        {
-            LittleFS.remove(F("wifilog.old"));
-            LittleFS.rename(F("wifilog.txt"), F("wifilog.old"));
-        }
-    }
-
+    bool online = WiFi.status() == WL_CONNECTED;
     String line;
-    line.reserve(64 + wifi_log_len * 16);
+    line.reserve(160 + wifi_log_len * 20);
     line = F("{\"boot\":\"");
-    line += bwc->reboot_time_str;
+    line += bwc->reboot_time_str.length() ? bwc->reboot_time_str : String('?');
     line += F("\",\"rst\":\"");
     line += ESP.getResetReason();
-    line += F("\",\"ip_ms\":");
+    line += F("\",\"up_s\":");
+    line += millis() / 1000;
+    line += F(",\"online\":");
+    line += online ? F("true") : F("false");
+    line += F(",\"ip_ms\":");
     line += wifi_gotip_ms;
-    line += F(",\"ntp_ms\":");
-    line += millis();
-    line += F(",\"rssi\":");
-    line += WiFi.RSSI();
-    line += F(",\"ch\":");
-    line += WiFi.channel();
-    line += F(",\"bssid\":\"");
-    line += WiFi.BSSIDstr();
-    line += F("\",\"ev\":\"");
+    if(final)
+    {
+        line += F(",\"ntp_ms\":");
+        line += millis();
+    }
+    if(online)
+    {
+        line += F(",\"rssi\":");
+        line += WiFi.RSSI();
+        line += F(",\"ch\":");
+        line += WiFi.channel();
+        line += F(",\"bssid\":\"");
+        line += WiFi.BSSIDstr();
+        line += '"';
+    }
+    line += F(",\"ev\":\"");
+    char ap[6];
     for(uint8_t i = 0; i < wifi_log_len; i++)
     {
         const wifi_log_event &e = wifi_log[i];
         if(i) line += ' ';
+        if(i == WIFI_LOG_KEEP_FIRST && wifi_log_dropped)
+        {
+            line += '+';
+            line += wifi_log_dropped;
+            line += ' ';
+        }
         line += e.kind;
         if(e.kind == 'D') line += e.reason;
         line += '@';
         line += e.ms;
-        if(e.kind == 'D' || e.kind == 'I')
+        if(e.kind == 'D' && e.ap)
+        {
+            snprintf_P(ap, sizeof(ap), PSTR(">%04x"), e.ap);
+            line += ap;
+        }
+        if(e.kind == 'I')
         {
             line += '/';
             line += e.rssi;
         }
     }
-    if(wifi_log_dropped)
-    {
-        line += F(" +");
-        line += wifi_log_dropped;
-        line += F(" more");
-    }
     line += F("\"}");
+    return line;
+}
 
-    file = LittleFS.open(F("wifilog.txt"), "a");
+/** keep one previous file, so the log never grows past twice the limit */
+void rotateWifiLog()
+{
+    File file = LittleFS.open(F("wifilog.txt"), "r");
+    if(!file) return;
+    size_t size = file.size();
+    file.close();
+    if(size <= WIFI_LOG_MAX_SIZE) return;
+    LittleFS.remove(F("wifilog.old"));
+    LittleFS.rename(F("wifilog.txt"), F("wifilog.old"));
+}
+
+/** called at boot: the previous boot never finished its line, keep what it saved */
+void carryOverWifiLog()
+{
+    File cur = LittleFS.open(F("wifilog.cur"), "r");
+    if(!cur) return;
+    String line = cur.readStringUntil('\n');
+    cur.close();
+    LittleFS.remove(F("wifilog.cur"));
+    line.trim();
+    if(!line.length()) return;
+    rotateWifiLog();
+    File file = LittleFS.open(F("wifilog.txt"), "a");
     if(!file) return;
     file.println(line);
     file.close();
+    BWC_LOG_P(PSTR("WiFi > previous boot: %s\n"), line.c_str());
+}
+
+/** save the line so far, in case the power goes before it is complete */
+void saveWifiLogProgress()
+{
+    if(wifi_log_done) return;
+    uint32_t gap = wifi_log_next_save;
+    if(gap > 600000) gap = 600000;
+    wifi_log_next_save = millis() + gap;
+    File file = LittleFS.open(F("wifilog.cur"), "w");
+    if(!file) return;
+    file.println(wifiLogLine(false));
+    file.close();
+}
+
+/** the clock is set: the line is complete */
+void saveWifiLog()
+{
+    if(wifi_log_done) return;
+    String line = wifiLogLine(true);
+    wifi_log_done = true;
+    rotateWifiLog();
+    File file = LittleFS.open(F("wifilog.txt"), "a");
+    if(!file) return;
+    file.println(line);
+    file.close();
+    LittleFS.remove(F("wifilog.cur"));
     BWC_LOG_P(PSTR("WiFi > saved join log: %s\n"), line.c_str());
 }
 
