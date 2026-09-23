@@ -36,9 +36,11 @@ section_temp_title=Temperatura
 label_actual=Reale :
 label_virtual=Virtuale :
 label_target=Obiettivo :
+tile_water=Acqua
+tile_target=Obiettivo
 
 section_control_title=Controllo
-control_temp=Temperatura
+control_temp=Temperatura obiettivo
 control_ambient=Temperatura ambiente
 control_brightness=Luminosità
 

@@ -648,6 +648,55 @@
       background: rgba(255,255,255,0.05);
     }
 
+    /* Water / target temperature tiles */
+    .temptiles {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .temptile {
+      flex: 1;
+      min-width: 0;
+      text-align: center;
+      padding: 10px 6px;
+      border-radius: 8px;
+      background: rgba(0,0,0,0.06);
+    }
+
+    .darkmode .temptile {
+      background: rgba(255,255,255,0.06);
+    }
+
+    .temptile-label {
+      font-size: 0.8em;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      opacity: 0.75;
+    }
+
+    .temptile-value {
+      font-size: clamp(2rem, 9vw, 2.8rem);
+      font-weight: 300;
+      line-height: 1.1;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .temptile-target .temptile-value {
+      color: var(--accent-color);
+    }
+
+    .darkmode .temptile-target .temptile-value {
+      color: #6fa8dc;
+    }
+
+    .tempunit {
+      font-size: 0.45em;
+      margin-left: 2px;
+      vertical-align: super;
+      opacity: 0.7;
+    }
+
     /* Barre de progression de la mise à jour du firmware */
     .fwbar {
       position: relative;

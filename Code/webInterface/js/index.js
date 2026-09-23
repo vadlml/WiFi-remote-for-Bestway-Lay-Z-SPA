@@ -196,6 +196,7 @@ function handlemsg(e) {
         document.getElementById("atlabel").innerHTML = msgobj.TMP.toString()
         document.getElementById("vtlabel").innerHTML = msgobj.VTM.toFixed(2).toString()
         document.getElementById("ttlabel").innerHTML = msgobj.TGT.toString()
+        document.querySelectorAll(".tempunit").forEach(e => e.textContent = msgobj.UNT ? "°C" : "°F")
 
         // buttons
         document.getElementById("AIR").checked = msgobj.AIR

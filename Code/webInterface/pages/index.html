@@ -24,14 +24,18 @@
 <section id="sectionTemperature">
   <div class="visualapproach"></div>
   <h2 data-i18n="section_temp_title">Temperature</h2>
+  <!-- water and target side by side: the pump display above alternates between them -->
+  <div class="temptiles">
+    <div class="temptile">
+      <div class="temptile-label" data-i18n="tile_water">Water</div>
+      <div class="temptile-value"><span id="atlabel">n/a</span><span class="tempunit"></span></div>
+    </div>
+    <div class="temptile temptile-target">
+      <div class="temptile-label" data-i18n="tile_target">Target</div>
+      <div class="temptile-value"><span id="ttlabel">n/a</span><span class="tempunit"></span></div>
+    </div>
+  </div>
   <table class="fixed">
-    <tr>
-      <td>
-        <!-- 1) Un span dédié au texte « Actual: » ou « Réel : » -->
-        <span data-i18n="label_actual">Actual:</span>
-      </td>
-      <td><span id="atlabel">n/a</span></td>
-    </tr>
     <tr>
       <td>
         <!-- 2) Un span dédié au texte « Virtual: » / « Virtuel : » -->
@@ -44,12 +48,6 @@
       </td>
       <td><span id="vtlabel">n/a</span></td>
     </tr>
-    <tr>
-      <td>
-        <span data-i18n="label_target">Target:</span>
-      </td>
-      <td><span id="ttlabel">n/a</span></td>
-    </tr>
   </table>
 </section>
 
@@ -59,7 +57,7 @@
 
   <table id="tableSlider">
     <tr>
-      <td><span data-i18n="control_temp">Temperature</span></td>
+      <td><span data-i18n="control_temp">Target temperature</span></td>
       <td>
         <input type="range" id="temp" min="20" max="40" step="1" value="20" onmouseup="sendCommand('setTarget')"
           ontouchend="sendCommand('setTarget')">
@@ -94,7 +92,7 @@
 
   <table id="tableSelector" class="fixed">
     <tr>
-      <td class="center"><span data-i18n="control_temp">Temperature</span></td>
+      <td class="center"><span data-i18n="control_temp">Target temperature</span></td>
       <td class="center"><span data-i18n="control_ambient">Ambient Temperature</span></td>
       <td id="brightnessHeader" class="center">
         <!-- même principe pour la version sélecteur numérique -->

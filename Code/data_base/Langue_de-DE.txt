@@ -36,9 +36,11 @@ section_temp_title=Temperatur
 label_actual=Ist :
 label_virtual=Virtuell :
 label_target=Soll :
+tile_water=Wasser
+tile_target=Soll
 
 section_control_title=Steuerung
-control_temp=Temperatur
+control_temp=Solltemperatur
 control_ambient=Umgebungstemperatur
 control_brightness=Helligkeit
 

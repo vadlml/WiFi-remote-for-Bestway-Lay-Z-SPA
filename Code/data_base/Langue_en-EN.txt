@@ -36,9 +36,11 @@ section_temp_title=Temperature
 label_actual=Actual:
 label_virtual=Virtual:
 label_target=Target:
+tile_water=Water
+tile_target=Target
 
 section_control_title=Control
-control_temp=Temperature
+control_temp=Target temperature
 control_ambient=Ambient Temp.
 control_brightness=Brightness
 
